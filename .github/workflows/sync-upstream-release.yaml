@@ -5,8 +5,7 @@ on:
     - cron: "17 5 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: sync-upstream-release
@@ -16,12 +15,16 @@ jobs:
     # Only the fork merges upstream releases into its own main
     if: github.repository == 'ALERTua/ha-ef-ble'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the merged release to main
     steps:
+      # No token in .git/config, because the tests run the code of the upstream release
       - name: Check out main with full history
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false
       - name: Find the latest upstream release
         id: release
         env:
@@ -65,4 +68,6 @@ jobs:
           uv run --python 3.14 pytest tests/eflib
       - name: Push the merge
         if: steps.release.outputs.new == 'true'
-        run: git push origin HEAD:main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
