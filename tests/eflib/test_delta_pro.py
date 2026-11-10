@@ -1,17 +1,28 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from custom_components.ef_ble.eflib.devices.delta_pro import Device
+from custom_components.ef_ble.eflib.devices.delta_pro import (
+    Device,
+    ScreenTimeout,
+    UnitTimeout,
+)
+from custom_components.ef_ble.eflib.entity import controls
 from custom_components.ef_ble.eflib.model import (
     DirectBmsMDeltaHeartbeatPack,
+    DirectEmsDeltaHeartbeatPack,
     DirectInvDeltaHeartbeatPack,
     DirectMpptHeartbeatPack,
+    DirectPdHeartbeatPack,
 )
 from custom_components.ef_ble.eflib.model.base import RawData
 from custom_components.ef_ble.eflib.packet import Packet
 
 # Index of each heartbeat in `packet_sequence`, with its source address and model
+_PD = (2, 0x02, DirectPdHeartbeatPack)
+_EMS = (1, 0x03, DirectEmsDeltaHeartbeatPack)
 _BMS = (3, 0x03, DirectBmsMDeltaHeartbeatPack)
+_INV = (4, 0x04, DirectInvDeltaHeartbeatPack)
+_MPPT = (5, 0x05, DirectMpptHeartbeatPack)
 
 
 def _reference(packet_sequence, kind: tuple[int, int, type[RawData]], **fields):
@@ -225,6 +236,7 @@ async def test_delta_pro_exact_values_from_known_packets(device, packet_sequence
 
     expected = {
         Device.battery_level: 78.4,
+        Device.battery_level_main: 78.4,
         Device.battery_charge_limit_min: 0,
         Device.battery_charge_limit_max: 100,
         Device.ac_output_power: 200,
@@ -248,7 +260,6 @@ async def test_delta_pro_exact_values_from_known_packets(device, packet_sequence
         Device.battery_2_enabled: False,
         Device.remaining_time_charging: 65535,
         Device.remaining_time_discharging: 336,
-        Device.battery_level_main: 78.4,
         Device.battery_voltage: 49.8,
         Device.max_cell_voltage: 3.41,
         Device.min_cell_voltage: 3.38,
@@ -259,6 +270,14 @@ async def test_delta_pro_exact_values_from_known_packets(device, packet_sequence
         Device.battery_full_capacity: 144000,
         Device.battery_cycles: 12,
         Device.ac_output_voltage: 230.0,
+        Device.beeper: True,
+        Device.ac_xboost: False,
+        Device.ac_always_on: False,
+        Device.screen_timeout: ScreenTimeout.MIN_1,
+        Device.unit_timeout: UnitTimeout.NEVER,
+        Device.dc_charging_max_amps: 8.0,
+        Device.generator_auto_start_level: 0,
+        Device.generator_auto_stop_level: 0,
     }
 
     for field_name, expected_value in expected.items():
@@ -269,43 +288,116 @@ async def test_delta_pro_exact_values_from_known_packets(device, packet_sequence
 
 
 @pytest.mark.parametrize(
-    ("raw_attr", "raw_value", "field_name", "expected"),
+    ("kind", "raw_attr", "raw_value", "field_name", "expected"),
     [
-        ("car_out_watts", 60, Device.dc_output_power, 6.0),
-        ("dcdc_12v_watts", 138, Device.anderson_out_power, 138),
+        (_MPPT, "car_out_watts", 60, Device.dc_output_power, 6.0),
+        (_MPPT, "dcdc_12v_watts", 138, Device.anderson_out_power, 138),
+        (_MPPT, "cfg_dc_chg_current", 6000, Device.dc_charging_max_amps, 6.0),
+        (_PD, "beep_mode", 1, Device.beeper, False),
+        (_PD, "ac_auto_config", 1, Device.ac_always_on, True),
+        (_PD, "lcd_off_sec", 300, Device.screen_timeout, ScreenTimeout.MIN_5),
+        (_PD, "standby_min", 120, Device.unit_timeout, UnitTimeout.HOUR_2),
+        (_INV, "cfg_ac_xboost", 1, Device.ac_xboost, True),
+        (_EMS, "open_oil_eb_soc", 25, Device.generator_auto_start_level, 25),
+        (_EMS, "close_oil_eb_soc", 85, Device.generator_auto_stop_level, 85),
     ],
-    ids=["dc_output_power", "anderson_out_power"],
+    ids=lambda value: value if isinstance(value, str) else None,
 )
-async def test_delta_pro_mppt_output_power_scale(
-    device, packet_sequence, raw_attr, raw_value, field_name, expected
+async def test_delta_pro_maps_heartbeat_field(
+    device, packet_sequence, kind, raw_attr, raw_value, field_name, expected
 ):
-    """12 V car output is in tenths of a watt, the Anderson output in whole watts"""
-    for hex_packet in packet_sequence:
-        packet = await device.packet_parse(bytes.fromhex(hex_packet))
-        await device.data_parse(packet)
-
-    mppt = DirectMpptHeartbeatPack.from_bytes(packet.payload)
-    setattr(mppt, raw_attr, raw_value)
-    device.update_from_data(mppt)
+    """Each value differs from the reference packet, so a wrong source field fails"""
+    device.update_from_data(_reference(packet_sequence, kind, **{raw_attr: raw_value}))
 
     assert device.get_value(field_name) == expected
 
 
 async def test_delta_pro_charging_ceiling_covers_a_230v_unit_without_rated_power(
-    device, packet_sequence
+    device, packet_sequence, mocker: MockerFixture
 ):
-    """A 230 V unit can report no rated power while it charges at 2600 W"""
-    reference = await device.packet_parse(bytes.fromhex(packet_sequence[4]))
-    inv = DirectInvDeltaHeartbeatPack.from_bytes(reference.payload)
-    inv.cfg_ac_out_voltage = 230_000
-    inv.cfg_slow_chg_watts = 2600
-    inv.ac_chg_rated_power = 0
-    packet = Packet(0x04, 0x21, 0x20, 0x02, inv.pack(), version=0x02)
+    """
+    A 230 V unit can report no rated charging power while it charges at 2600 W, so the
+    ceiling must not fall back to 1800 W
+    """
+    packet = _heartbeat(
+        packet_sequence,
+        _INV,
+        cfg_ac_out_voltage=230_000,
+        cfg_slow_chg_watts=2600,
+        ac_chg_rated_power=0,
+    )
+    on_ceiling_change = mocker.Mock()
+    device.register_callback(on_ceiling_change, "ac_charging_power_max")
 
     assert await device.data_parse(packet)
 
+    on_ceiling_change.assert_called_once()
     assert device.ac_charging_speed == 2600
     assert device.ac_charging_power_max >= 2600
+
+
+@pytest.mark.parametrize(
+    ("control_type", "keys"),
+    [
+        (
+            controls.toggle,
+            {
+                "ac_ports",
+                "ac_xboost",
+                "ac_always_on",
+                "dc_12v_port",
+                "energy_backup",
+                "beeper",
+            },
+        ),
+        (
+            controls.NumberType,
+            {
+                "ac_charging_speed",
+                "battery_charge_limit_max",
+                "battery_charge_limit_min",
+                "energy_backup_battery_level",
+                "dc_charging_max_amps",
+                "generator_auto_start_level",
+                "generator_auto_stop_level",
+            },
+        ),
+        (controls.select, {"screen_timeout", "unit_timeout"}),
+    ],
+    ids=["switches", "numbers", "selects"],
+)
+def test_delta_pro_registers_its_controls(device, control_type, keys):
+    """Keys must equal the deprecated entities, or HA orphans their history"""
+    assert {control.key for control in device.get_controls(control_type)} == keys
+
+
+@pytest.mark.parametrize(
+    ("setter", "value", "payload"),
+    [
+        ("enable_beeper", True, b"\x00"),
+        ("enable_beeper", False, b"\x01"),
+        ("set_dc_charging_amps_max", 6.0, (6000).to_bytes(4, "little")),
+    ],
+    ids=["beeper_on", "beeper_off", "dc_amps_in_milliamps"],
+)
+async def test_delta_pro_setter_payload(device, setter, value, payload):
+    await getattr(device, setter)(value)
+
+    assert device._conn.send_packet.call_args.args[0].payload == payload
+
+
+async def test_delta_pro_ac_always_on_keeps_the_minimum_level(device, packet_sequence):
+    device.update_from_data(_reference(packet_sequence, _PD, min_ac_out_soc=15))
+
+    await device.enable_ac_always_on(True)
+
+    assert device._conn.send_packet.call_args.args[0].payload == bytes([1, 15])
+
+
+async def test_delta_pro_ac_always_on_waits_for_the_minimum_level(device):
+    await device.enable_ac_always_on(True)
+
+    device._conn.send_packet.assert_not_called()
 
 
 @pytest.mark.parametrize("num", [1, 2])
