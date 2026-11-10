@@ -19,8 +19,30 @@ from ..props.raw_data_field import dataclass_attr_mapper, raw_field
 from ..props.raw_data_props import RawDataProps
 from ..props.transforms import pdiv, pround
 
+
+class _BmsHeartbeatBatteryMain(DirectBmsMDeltaHeartbeatPack):
+    pass
+
+
+class _BmsHeartbeatBattery1(DirectBmsMDeltaHeartbeatPack):
+    pass
+
+
+class _BmsHeartbeatBattery2(DirectBmsMDeltaHeartbeatPack):
+    pass
+
+
+# `num` names the pack: 0 is the main pack, 1-2 the extra batteries
+_BMS_HEARTBEAT_BY_SLOT = {
+    0: _BmsHeartbeatBatteryMain,
+    1: _BmsHeartbeatBattery1,
+    2: _BmsHeartbeatBattery2,
+}
+
 rd_pd = dataclass_attr_mapper(DirectPdHeartbeatPack)
-rd_bms = dataclass_attr_mapper(DirectBmsMDeltaHeartbeatPack)
+rd_bms = dataclass_attr_mapper(_BmsHeartbeatBatteryMain)
+rd_bms_1 = dataclass_attr_mapper(_BmsHeartbeatBattery1)
+rd_bms_2 = dataclass_attr_mapper(_BmsHeartbeatBattery2)
 rd_ems = dataclass_attr_mapper(DirectEmsDeltaHeartbeatPack)
 rd_inv = dataclass_attr_mapper(DirectInvDeltaHeartbeatPack)
 rd_mppt = dataclass_attr_mapper(DirectMpptHeartbeatPack)
@@ -67,14 +89,35 @@ class Device(DeviceBase, RawDataProps):
     battery_temperature = raw_field(rd_bms.temp)
     cell_temperature = raw_field(rd_bms.max_cell_temp)
     state_of_health = raw_field(rd_bms.soh)
+    battery_remaining_capacity = raw_field(rd_bms.remain_cap)
+    battery_full_capacity = raw_field(rd_bms.full_cap)
+    battery_cycles = raw_field(rd_bms.cycles)
 
     battery_1_enabled = Field[bool]()
     battery_1_battery_level = Field[float]()
     battery_1_sn = Field[str]()
+    battery_1_cell_temperature = raw_field(rd_bms_1.max_cell_temp)
+    battery_1_voltage = raw_field(rd_bms_1.vol, pdiv(1000, 2))
+    battery_1_max_cell_voltage = raw_field(rd_bms_1.max_cell_vol, pdiv(1000, 3))
+    battery_1_min_cell_voltage = raw_field(rd_bms_1.min_cell_vol, pdiv(1000, 3))
+    battery_1_input_power = raw_field(rd_bms_1.input_watts)
+    battery_1_output_power = raw_field(rd_bms_1.output_watts)
+    battery_1_remaining_capacity = raw_field(rd_bms_1.remain_cap)
+    battery_1_full_capacity = raw_field(rd_bms_1.full_cap)
+    battery_1_cycles = raw_field(rd_bms_1.cycles)
 
     battery_2_enabled = Field[bool]()
     battery_2_battery_level = Field[float]()
     battery_2_sn = Field[str]()
+    battery_2_cell_temperature = raw_field(rd_bms_2.max_cell_temp)
+    battery_2_voltage = raw_field(rd_bms_2.vol, pdiv(1000, 2))
+    battery_2_max_cell_voltage = raw_field(rd_bms_2.max_cell_vol, pdiv(1000, 3))
+    battery_2_min_cell_voltage = raw_field(rd_bms_2.min_cell_vol, pdiv(1000, 3))
+    battery_2_input_power = raw_field(rd_bms_2.input_watts)
+    battery_2_output_power = raw_field(rd_bms_2.output_watts)
+    battery_2_remaining_capacity = raw_field(rd_bms_2.remain_cap)
+    battery_2_full_capacity = raw_field(rd_bms_2.full_cap)
+    battery_2_cycles = raw_field(rd_bms_2.cycles)
 
     ac_output_power = raw_field(rd_inv.output_watts)
     ac_output_voltage = raw_field(rd_inv.inv_out_vol, pdiv(1000, 2))
@@ -176,8 +219,9 @@ class Device(DeviceBase, RawDataProps):
                         self._dormant = False
             case 0x02, 0x20, 0x02:
                 self.update_from_bytes(DirectPdHeartbeatPack, packet.payload)
-            case 0x03, 0x20, 0x32:
-                self.update_from_bytes(DirectBmsMDeltaHeartbeatPack, packet.payload)
+            case _, 0x20, 0x32:
+                if not self._parse_bms_heartbeat(packet.payload):
+                    return False
             case 0x03, 0x20, 0x02:
                 self.update_from_bytes(DirectEmsDeltaHeartbeatPack, packet.payload)
             case 0x04, 0x20, 0x02:
@@ -243,6 +287,18 @@ class Device(DeviceBase, RawDataProps):
             ),
             wait_for_response=False,
         )
+
+    def _parse_bms_heartbeat(self, payload: bytes) -> bool:
+        """Route a BMS heartbeat to the pack named by `num` in its payload"""
+        if not payload:
+            return False
+
+        heartbeat_type = _BMS_HEARTBEAT_BY_SLOT.get(payload[0])
+        if heartbeat_type is None:
+            return False
+
+        self.update_from_bytes(heartbeat_type, payload)
+        return True
 
     def _update_extra_batteries(self, kit_data: AllKitDetailData):
         battery_entity_map = [
