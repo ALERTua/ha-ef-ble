@@ -2,6 +2,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from custom_components.ef_ble.eflib.devices.delta_pro import Device
+from custom_components.ef_ble.eflib.entity import controls
 from custom_components.ef_ble.eflib.model import (
     DirectInvDeltaHeartbeatPack,
     DirectMpptHeartbeatPack,
@@ -247,3 +248,31 @@ async def test_delta_pro_charging_ceiling_covers_a_230v_unit_without_rated_power
 
     assert device.ac_charging_speed == 2600
     assert device.ac_charging_power_max >= 2600
+
+
+@pytest.mark.parametrize(
+    ("control_type", "keys"),
+    [
+        (
+            controls.toggle,
+            {
+                "ac_ports",
+                "dc_12v_port",
+                "energy_backup",
+            },
+        ),
+        (
+            controls.NumberType,
+            {
+                "ac_charging_speed",
+                "battery_charge_limit_max",
+                "battery_charge_limit_min",
+                "energy_backup_battery_level",
+            },
+        ),
+    ],
+    ids=["switches", "numbers"],
+)
+def test_delta_pro_registers_its_controls(device, control_type, keys):
+    """Keys must equal the deprecated entities, or HA orphans their history"""
+    assert {control.key for control in device.get_controls(control_type)} == keys

@@ -630,24 +630,24 @@ Click on any device below to see available sensors, switches, and controls:
 
 <br>
 
-| *Sensors*                   | *Switches*  | *Sliders*         |
-|-----------------------------|-------------|-------------------|
-| Battery Level               | AC Ports    | AC Charging Speed |
-| Input Power                 | DC 12V Port | Backup Reserve    |
-| Output Power                |             | Charge Limit      |
-| AC Input Power              |             | Discharge Limit   |
-| AC Input Voltage            |             |                   |
-| AC Input Current            |             |                   |
-| AC Output Power             |             |                   |
-| DC Output Power             |             |                   |
-| USB C Output Power          |             |                   |
-| USB C (2) Output Power      |             |                   |
-| USB A Output Power          |             |                   |
-| USB A (2) Output Power      |             |                   |
-| USB A QC (1) Power          |             |                   |
-| USB A QC (2) Power          |             |                   |
-| Extra Battery Level ¹       |             |                   |
-| Extra Battery Temperature ¹ |             |                   |
+| *Sensors*                   | *Switches*     | *Sliders*         |
+|-----------------------------|----------------|-------------------|
+| Battery Level               | AC Ports       | AC Charging Speed |
+| Input Power                 | DC 12V Port    | Backup Reserve    |
+| Output Power                | Backup Reserve | Charge Limit      |
+| AC Input Power              |                | Discharge Limit   |
+| AC Input Voltage            |                |                   |
+| AC Input Current            |                |                   |
+| AC Output Power             |                |                   |
+| DC Output Power             |                |                   |
+| USB C Output Power          |                |                   |
+| USB C (2) Output Power      |                |                   |
+| USB A Output Power          |                |                   |
+| USB A (2) Output Power      |                |                   |
+| USB A QC (1) Power          |                |                   |
+| USB A QC (2) Power          |                |                   |
+| Extra Battery Level ¹       |                |                   |
+| Extra Battery Temperature ¹ |                |                   |
 
 <sup>¹ Per extra battery (up to 2)</sup>
 
