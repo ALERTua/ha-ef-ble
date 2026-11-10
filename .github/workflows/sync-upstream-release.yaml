@@ -1,0 +1,68 @@
+name: Sync upstream release
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-release
+
+jobs:
+  sync:
+    # Only the fork merges upstream releases into its own main
+    if: github.repository == 'ALERTua/ha-ef-ble'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main with full history
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Find the latest upstream release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo rabits/ha-ef-ble --json tagName --jq .tagName)
+          git fetch --no-tags https://github.com/rabits/ha-ef-ble.git "refs/tags/$tag:refs/tags/$tag"
+          if git merge-base --is-ancestor "refs/tags/$tag" HEAD; then
+            echo "main already holds $tag"
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Merge the release
+        if: steps.release.outputs.new == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-ff -m "Merge upstream release $TAG" "refs/tags/$TAG"
+      - name: Install uv
+        if: steps.release.outputs.new == 'true'
+        uses: astral-sh/setup-uv@v5
+      - name: Setup Python 3.x
+        if: steps.release.outputs.new == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: |
+            3.13
+            3.14
+      - name: Install private D-Bus test dependency
+        if: steps.release.outputs.new == 'true'
+        run: sudo apt-get update -qq && sudo apt-get install --no-install-recommends -y dbus
+      # A push with GITHUB_TOKEN starts no other workflow, so this job runs the tests itself
+      - name: Tests
+        if: steps.release.outputs.new == 'true'
+        run: |
+          uv run --python 3.13 pytest tests/eflib
+          uv run --python 3.14 pytest tests/eflib
+      - name: Push the merge
+        if: steps.release.outputs.new == 'true'
+        run: git push origin HEAD:main
