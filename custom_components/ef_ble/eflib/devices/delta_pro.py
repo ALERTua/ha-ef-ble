@@ -193,6 +193,8 @@ class Device(DeviceBase, RawDataProps):
     dc_input_voltage = raw_field(rd_mppt.in_vol, pdiv(10, 1))
     dc_input_current = raw_field(rd_mppt.in_amp, pdiv(100, 2))
     mppt_temperature = raw_field(rd_mppt.mppt_temp)
+    mppt_output_power = raw_field(rd_mppt.out_watts, pdiv(10, 1))
+    mppt_output_voltage = raw_field(rd_mppt.out_vol, pdiv(10, 1))
 
     ac_charging_speed = raw_field(rd_inv.cfg_slow_chg_watts)
     ac_charging_speed_min = option_field(
