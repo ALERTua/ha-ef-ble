@@ -635,10 +635,11 @@ Click on any device below to see available sensors, switches, and controls:
 | Battery Level                       | AC Ports       | AC Charging Speed          | Screen Timeout |
 | Main Battery Level                  | DC 12V Port    | Backup Reserve             | Unit Timeout   |
 | Battery Temperature                 | Backup Reserve | Charge Limit               |                |
-| Input Power                         | X-Boost        | Discharge Limit            |                |
-| Output Power                        | AC Always On   | DC Charging Max Amps       |                |
-| AC Input Power                      | Beeper         | Generator Auto Start Level |                |
-| AC Input Voltage                    |                | Generator Auto Stop Level  |                |
+| Inverter Temperature                | X-Boost        | Discharge Limit            |                |
+| Input Power                         | AC Always On   | DC Charging Max Amps       |                |
+| Output Power                        | Beeper         | Generator Auto Start Level |                |
+| AC Input Power                      |                | Generator Auto Stop Level  |                |
+| AC Input Voltage                    |                |                            |                |
 | AC Input Current                    |                |                            |                |
 | AC Output Power                     |                |                            |                |
 | DC Output Power                     |                |                            |                |
@@ -669,6 +670,8 @@ Click on any device below to see available sensors, switches, and controls:
 | Charge Time Remaining (disabled)    |                |                            |                |
 | Discharge Time Remaining (disabled) |                |                            |                |
 | AC Output Voltage (disabled)        |                |                            |                |
+| Inverter DC Temperature (disabled)  |                |                            |                |
+| MPPT Temperature (disabled)         |                |                            |                |
 | Remaining Capacity (disabled)       |                |                            |                |
 | Full Capacity (disabled)            |                |                            |                |
 | Charge Cycles (disabled)            |                |                            |                |
